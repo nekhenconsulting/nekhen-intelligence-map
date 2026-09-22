@@ -1,0 +1,723 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#111113">
+  <title>Nekhen Intelligence Map</title>
+
+  <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.10.0/dist/maplibre-gl.css">
+
+  <style>
+    :root{
+      --panel-w:400px;
+      --panel:#141416;
+      --panel-2:#1a1a1e;
+      --line:#2d2d33;
+      --text:#f3f3f4;
+      --muted:#96969e;
+      --control:#111115;
+      --soft:#232328;
+    }
+    *{box-sizing:border-box}
+    html,body,#app,#map{height:100%;width:100%;margin:0}
+    body{overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial,sans-serif;background:#ddd}
+    button,input,select{font:inherit}
+    #app{position:relative}
+    #map{position:absolute;inset:0}
+
+    .sidebar{
+      position:absolute;
+      z-index:20;
+      top:14px;left:14px;bottom:14px;
+      width:min(var(--panel-w),calc(100vw - 28px));
+      display:flex;flex-direction:column;
+      background:rgba(20,20,22,.97);
+      color:var(--text);
+      border:1px solid rgba(255,255,255,.08);
+      border-radius:18px;
+      overflow:hidden;
+      box-shadow:0 14px 32px rgba(0,0,0,.22);
+      transition:transform .18s ease;
+    }
+    .sidebar.closed{transform:translateX(calc(-100% - 22px))}
+
+    .brand{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;padding:16px;border-bottom:1px solid var(--line)}
+    .eyebrow{font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:#85858d;margin-bottom:5px}
+    .brand h1{margin:0;font-size:17px;line-height:1.15}
+    .brand p{margin:5px 0 0;font-size:12px;color:var(--muted)}
+
+    .icon-btn,.open-panel{
+      border:1px solid var(--line);background:#1c1c20;color:#fff;border-radius:11px;
+      width:38px;height:38px;display:grid;place-items:center;cursor:pointer;font-size:17px
+    }
+    .open-panel{
+      position:absolute;z-index:21;top:18px;left:18px;display:none;
+      box-shadow:0 8px 20px rgba(0,0,0,.2)
+    }
+    .sidebar.closed + .open-panel{display:grid}
+
+    .tabs{display:grid;grid-template-columns:1fr 1fr 1fr;gap:7px;padding:10px 12px 0}
+    .tab{
+      border:1px solid var(--line);background:transparent;color:#96969d;border-radius:10px;
+      padding:9px 8px;font-size:12px;font-weight:700;cursor:pointer
+    }
+    .tab.active{background:#f3f3f3;color:#111;border-color:#f3f3f3}
+
+    .country-bar{padding:10px 12px;border-bottom:1px solid var(--line)}
+    .country-bar label{display:block;font-size:10px;color:#85858d;text-transform:uppercase;letter-spacing:.11em;margin:0 0 6px 2px}
+    .country-select{
+      width:100%;min-height:42px;border:1px solid var(--line);background:var(--control);color:#fff;
+      border-radius:11px;padding:0 11px;font-size:14px
+    }
+
+    .panel-body{flex:1;min-height:0;overflow:auto;padding:12px}
+    .view{display:none}.view.active{display:block}
+
+    .search,.control{
+      width:100%;min-height:42px;border:1px solid var(--line);background:var(--control);color:#fff;
+      border-radius:11px;padding:0 12px;font-size:14px
+    }
+    .search::placeholder,.control::placeholder{color:#707078}
+
+    .feed{display:grid;gap:8px;margin-top:10px}
+    .event{
+      width:100%;border:1px solid var(--line);background:var(--panel-2);color:#fff;
+      border-radius:12px;padding:12px;text-align:left;cursor:pointer
+    }
+    .event:hover{border-color:#494950}
+    .event-top{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}
+    .event-title{font-size:13.5px;font-weight:700;line-height:1.3}
+    .event-date{font-size:11px;color:#898990;white-space:nowrap}
+    .event-meta{display:flex;gap:6px;flex-wrap:wrap;margin-top:7px;color:#aaaab0;font-size:11px}
+    .pill{border:1px solid #39393f;border-radius:999px;padding:3px 7px;color:#c8c8ce}
+    .precision{opacity:.8}
+
+    .section-title{font-size:11px;text-transform:uppercase;letter-spacing:.12em;color:#83838a;margin:14px 2px 8px}
+    .filter-grid{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+    .field{display:grid;gap:5px}.field.full{grid-column:1/-1}
+    label{font-size:11px;color:#9a9aa1}
+    .actions{display:flex;gap:8px;margin-top:12px}
+    .btn{
+      flex:1;min-height:40px;border-radius:10px;border:1px solid var(--line);
+      font-size:12px;font-weight:700;cursor:pointer
+    }
+    .btn.primary{background:#f3f3f3;color:#111;border-color:#f3f3f3}
+    .btn.secondary{background:#17171a;color:#fff}
+
+    .stats{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+    .stat{border:1px solid var(--line);background:var(--panel-2);border-radius:12px;padding:13px}
+    .stat strong{display:block;font-size:23px;line-height:1;margin-bottom:6px}
+    .stat span{font-size:11px;color:#8f8f96}
+    .analysis-list{border:1px solid var(--line);border-radius:12px;overflow:hidden}
+    .analysis-row{display:flex;justify-content:space-between;gap:12px;padding:10px 12px;border-bottom:1px solid var(--line);font-size:12px}
+    .analysis-row:last-child{border-bottom:0}
+    .empty{padding:24px 10px;text-align:center;color:#85858c;font-size:13px}
+
+    .status{display:flex;justify-content:space-between;gap:10px;padding:9px 12px;border-top:1px solid var(--line);color:#818188;font-size:11px}
+
+    .map-badge{
+      position:absolute;z-index:9;right:14px;bottom:14px;
+      background:rgba(18,18,20,.92);border:1px solid rgba(255,255,255,.08);color:#ddd;
+      border-radius:10px;padding:8px 10px;font-size:11px
+    }
+
+    .maplibregl-popup-content{background:#141416;color:#f4f4f4;border-radius:12px;padding:13px 14px;min-width:260px}
+    .maplibregl-popup-close-button{color:#aaa;font-size:18px}
+    .popup-title{font-size:14px;font-weight:700;margin-bottom:6px;padding-right:14px}
+    .popup-meta{font-size:11px;color:#aaaab0;margin-bottom:8px;line-height:1.45}
+    .popup-summary{font-size:12px;line-height:1.5;color:#dedee1}
+    .popup-tags{display:flex;flex-wrap:wrap;gap:5px;margin-top:8px}
+    .popup-tag{font-size:10px;border:1px solid #3a3a40;border-radius:999px;padding:3px 6px;color:#cfcfd4}
+    .popup-link{display:inline-block;margin-top:10px;color:#fff;text-decoration:underline;font-size:11px}
+
+    @media(max-width:720px){
+      .sidebar{top:auto;left:8px;right:8px;bottom:8px;width:auto;height:min(72%,650px)}
+      .sidebar.closed{transform:translateY(calc(100% + 12px))}
+      .open-panel{top:auto;bottom:16px;left:16px}
+      .filter-grid{grid-template-columns:1fr}.field.full{grid-column:auto}
+      .map-badge{top:14px;bottom:auto}
+    }
+  </style>
+</head>
+<body>
+<div id="app">
+  <div id="map"></div>
+
+  <aside id="sidebar" class="sidebar">
+    <div class="brand">
+      <div>
+        <div class="eyebrow">Nekhen Intelligence</div>
+        <h1>Intelligence Map</h1>
+        <p>Veille géographique</p>
+      </div>
+      <button id="closePanel" class="icon-btn" aria-label="Masquer le panneau">‹</button>
+    </div>
+
+    <div class="tabs">
+      <button class="tab active" data-view="feed">FEED</button>
+      <button class="tab" data-view="filters">FILTRES</button>
+      <button class="tab" data-view="analysis">ANALYSE</button>
+    </div>
+
+    <div class="country-bar">
+      <label for="countryMain">Pays</label>
+      <select id="countryMain" class="country-select"></select>
+    </div>
+
+    <div class="panel-body">
+      <section id="view-feed" class="view active">
+        <input id="feedSearch" class="search" type="search" placeholder="Rechercher dans les événements…">
+        <div id="feed" class="feed"></div>
+      </section>
+
+      <section id="view-filters" class="view">
+        <div class="section-title">Affichage</div>
+        <div class="filter-grid">
+          <div class="field full">
+            <label for="period">Période</label>
+            <select id="period" class="control">
+              <option value="all">Toutes les dates</option>
+              <option value="7">7 derniers jours</option>
+              <option value="30">30 derniers jours</option>
+              <option value="90">3 derniers mois</option>
+              <option value="365">12 derniers mois</option>
+            </select>
+          </div>
+
+          <div class="field">
+            <label for="category">Catégorie</label>
+            <select id="category" class="control"><option value="">Toutes</option></select>
+          </div>
+
+          <div class="field">
+            <label for="sector">Secteur</label>
+            <select id="sector" class="control"><option value="">Tous</option></select>
+          </div>
+
+          <div class="field">
+            <label for="precision">Précision géographique</label>
+            <select id="precision" class="control">
+              <option value="">Toutes</option>
+              <option value="exact">Exacte</option>
+              <option value="address">Adresse</option>
+              <option value="city">Ville</option>
+              <option value="region">Région</option>
+              <option value="approximate">Approximative</option>
+            </select>
+          </div>
+
+          <div class="field">
+            <label for="tagFilter">Tag</label>
+            <input id="tagFilter" class="control" type="search" placeholder="Ex. horlogerie">
+          </div>
+        </div>
+
+        <div class="actions">
+          <button id="applyFilters" class="btn primary">APPLIQUER</button>
+          <button id="resetFilters" class="btn secondary">RÉINITIALISER</button>
+        </div>
+      </section>
+
+      <section id="view-analysis" class="view">
+        <div class="stats">
+          <div class="stat"><strong id="statVisible">0</strong><span>événements visibles</span></div>
+          <div class="stat"><strong id="statTotal">0</strong><span>événements filtrés</span></div>
+        </div>
+
+        <div class="section-title">Répartition par catégorie</div>
+        <div id="analysisCategories" class="analysis-list"></div>
+
+        <div class="section-title">Répartition par secteur</div>
+        <div id="analysisSectors" class="analysis-list"></div>
+
+        <div class="section-title">Répartition par pays</div>
+        <div id="analysisCountries" class="analysis-list"></div>
+      </section>
+    </div>
+
+    <div class="status">
+      <span id="dataStatus">Données : <strong>connexion…</strong></span>
+      <span id="visibleStatus">0 visible</span>
+    </div>
+  </aside>
+
+  <button id="openPanel" class="open-panel" aria-label="Afficher le panneau">☰</button>
+  <div class="map-badge">OpenStreetMap · OpenFreeMap</div>
+</div>
+
+
+<script src="https://unpkg.com/maplibre-gl@5.10.0/dist/maplibre-gl.js"></script>
+<script>
+const CONFIG = {
+  supabaseUrl: "https://dcwvlvccxolrptxunjbw.supabase.co",
+  supabaseAnonKey: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRjd3ZsdmNjeG9scnB0eHVuamJ3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODk2MTg4MDIsImV4cCI6MjEwNTE5NDgwMn0.w1RR8a3Q1oNOVF9wmX9N5N5tRYmSk7AEa3fV49cleSk",
+  view: "intelligence_map_events"
+};
+
+const COUNTRIES = [
+  {code:"CH",name:"Suisse",center:[8.2275,46.8182],zoom:7.1},
+  {code:"FR",name:"France",center:[2.2137,46.2276],zoom:5.4},
+  {code:"DE",name:"Allemagne",center:[10.4515,51.1657],zoom:5.3},
+  {code:"IT",name:"Italie",center:[12.5674,41.8719],zoom:5.2},
+  {code:"AT",name:"Autriche",center:[14.5501,47.5162],zoom:6.1}
+];
+
+const state = {
+  events: [],
+  country: "CH",
+  period: "all",
+  category: "",
+  sector: "",
+  precision: "",
+  tag: "",
+  filtered: [],
+  visible: [],
+  markers: []
+};
+
+const map = new maplibregl.Map({
+  container: "map",
+  style: "https://tiles.openfreemap.org/styles/liberty",
+  center: [8.2275,46.8182],
+  zoom: 7.1,
+  attributionControl: false
+});
+map.addControl(new maplibregl.NavigationControl({showCompass:false}), "top-right");
+map.addControl(new maplibregl.AttributionControl({compact:true}), "bottom-right");
+
+function esc(v){
+  return String(v ?? "").replace(/[&<>"']/g, c => ({
+    "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
+  }[c]));
+}
+function formatDate(v){
+  if(!v) return "Date inconnue";
+  const d = new Date(v);
+  return Number.isNaN(d.getTime()) ? v :
+    new Intl.DateTimeFormat("fr-CH",{day:"2-digit",month:"2-digit",year:"numeric"}).format(d);
+}
+function countryName(code){
+  return COUNTRIES.find(c => c.code === code)?.name || code || "";
+}
+function normalizeArray(v){
+  if(Array.isArray(v)) return v;
+  if(typeof v === "string"){
+    try{
+      const p = JSON.parse(v);
+      if(Array.isArray(p)) return p;
+    }catch(_){}
+    return v.replace(/^\{|\}$/g,"").split(",").map(x=>x.replace(/^"|"$/g,"").trim()).filter(Boolean);
+  }
+  return [];
+}
+function eventTitle(e){
+  return e.target_name || e.incident_type || e.threat_type || "Événement";
+}
+function eventCategory(e){
+  return e.incident_type || e.threat_type || "Non renseigné";
+}
+function eventSectors(e){
+  return normalizeArray(e.sectors);
+}
+function toGeoJSON(list){
+  return {
+    type:"FeatureCollection",
+    features:list
+      .filter(e => Number.isFinite(Number(e.longitude)) && Number.isFinite(Number(e.latitude)))
+      .map(e => ({
+        type:"Feature",
+        properties:{
+          id:String(e.id),
+          title:eventTitle(e),
+          category:eventCategory(e),
+          level:e.level || "",
+          precision:e.geolocation_precision || ""
+        },
+        geometry:{type:"Point",coordinates:[Number(e.longitude),Number(e.latitude)]}
+      }))
+  };
+}
+function fillCountries(){
+  const el = document.getElementById("countryMain");
+  el.innerHTML = COUNTRIES.map(c =>
+    `<option value="${c.code}"${c.code==="CH"?" selected":""}>${c.name}</option>`
+  ).join("");
+}
+function uniqueCategories(){
+  return [...new Set(state.events.map(eventCategory).filter(Boolean))].sort((a,b)=>a.localeCompare(b,"fr"));
+}
+function uniqueSectors(){
+  return [...new Set(state.events.flatMap(eventSectors).filter(Boolean))].sort((a,b)=>a.localeCompare(b,"fr"));
+}
+function fillSimpleSelect(id, vals){
+  const el = document.getElementById(id);
+  const first = el.options[0].outerHTML;
+  el.innerHTML = first + vals.map(v=>`<option value="${esc(v)}">${esc(v)}</option>`).join("");
+}
+
+async function loadEvents(){
+  const endpoint =
+    `${CONFIG.supabaseUrl}/rest/v1/${CONFIG.view}?select=*&order=occurred_at.desc.nullslast`;
+
+  const res = await fetch(endpoint, {
+    headers: {
+      apikey: CONFIG.supabaseAnonKey,
+      Authorization: `Bearer ${CONFIG.supabaseAnonKey}`
+    }
+  });
+
+  if(!res.ok){
+    const body = await res.text();
+    throw new Error(`Supabase ${res.status}: ${body}`);
+  }
+
+  const rows = await res.json();
+  state.events = rows.map(r => ({
+    ...r,
+    latitude: Number(r.latitude),
+    longitude: Number(r.longitude),
+    keywords: normalizeArray(r.keywords),
+    sectors: normalizeArray(r.sectors)
+  })).filter(e => COUNTRIES.some(c=>c.code===e.country_code));
+
+  document.getElementById("dataStatus").innerHTML =
+    `Données : <strong>Supabase · ${state.events.length}</strong>`;
+}
+
+function filterEvents(){
+  const now = new Date();
+
+  state.filtered = state.events.filter(e => {
+    if(e.country_code !== state.country) return false;
+
+    const category = eventCategory(e);
+    if(state.category && category !== state.category) return false;
+
+    const sectors = eventSectors(e);
+    if(state.sector && !sectors.includes(state.sector)) return false;
+
+    if(state.precision && e.geolocation_precision !== state.precision) return false;
+
+    if(state.tag){
+      const q = state.tag.toLowerCase();
+      const haystack = [
+        ...(e.keywords || []),
+        eventTitle(e),
+        e.threat_type,
+        e.target_type,
+        e.target_name,
+        e.locality,
+        e.region,
+        e.notable_element,
+        e.nekhen_relevance
+      ].join(" ").toLowerCase();
+      if(!haystack.includes(q)) return false;
+    }
+
+    if(state.period !== "all" && e.occurred_at){
+      const d = new Date(e.occurred_at);
+      if((now - d) / 86400000 > Number(state.period)) return false;
+    }
+    return true;
+  });
+
+  renderMarkers();
+  updateVisible();
+}
+
+function updateVisible(){
+  if(!map.loaded()) return;
+  const b = map.getBounds();
+
+  state.visible = state.filtered.filter(e => {
+    const lng = Number(e.longitude);
+    const lat = Number(e.latitude);
+    return Number.isFinite(lng) && Number.isFinite(lat) &&
+      lng >= b.getWest() && lng <= b.getEast() &&
+      lat >= b.getSouth() && lat <= b.getNorth();
+  });
+
+  // If the selected country's events are temporarily outside the rendered bounds
+  // during a camera transition, keep the feed populated instead of flashing empty.
+  const feedRows = state.visible.length ? state.visible : state.filtered;
+  renderFeed(feedRows);
+  renderAnalysis(feedRows);
+
+  document.getElementById("visibleStatus").textContent =
+    `${feedRows.length} visible${feedRows.length>1?"s":""}`;
+}
+
+function renderFeed(rowsInput = state.filtered){
+  const q = document.getElementById("feedSearch").value.trim().toLowerCase();
+  const rows = rowsInput
+    .filter(e => {
+      if(!q) return true;
+      const haystack = [
+        eventTitle(e), eventCategory(e), ...eventSectors(e),
+        e.locality, e.region, e.threat_type, e.target_type,
+        e.notable_element, e.nekhen_relevance, ...(e.keywords||[])
+      ].join(" ").toLowerCase();
+      return haystack.includes(q);
+    })
+    .sort((a,b)=>String(b.occurred_at||"").localeCompare(String(a.occurred_at||"")));
+
+  const feed = document.getElementById("feed");
+  feed.innerHTML = rows.length ? rows.map(e => `
+    <button class="event" data-id="${esc(e.id)}">
+      <div class="event-top">
+        <div class="event-title">${esc(eventTitle(e))}</div>
+        <div class="event-date">${esc(formatDate(e.occurred_at))}</div>
+      </div>
+      <div class="event-meta">
+        <span class="pill">${esc(e.level || "INFORMATION")}</span>
+        ${eventSectors(e).slice(0,2).map(s=>`<span class="pill">${esc(s)}</span>`).join("")}
+        <span>${esc(e.locality || e.region || "")}</span>
+      </div>
+    </button>
+  `).join("") : '<div class="empty">Aucun événement visible.</div>';
+
+  feed.querySelectorAll(".event").forEach(btn=>{
+    btn.addEventListener("click",()=>{
+      const e = state.events.find(x=>String(x.id)===String(btn.dataset.id));
+      if(!e) return;
+      map.easeTo({center:[e.longitude,e.latitude],zoom:12,duration:450});
+      showPopup(e);
+    });
+  });
+}
+
+function groupedValues(values){
+  const m = new Map();
+  values.filter(Boolean).forEach(v=>m.set(v,(m.get(v)||0)+1));
+  return [...m.entries()].sort((a,b)=>b[1]-a[1]||String(a[0]).localeCompare(String(b[0]),"fr"));
+}
+function renderAnalysis(rowsInput = state.filtered){
+  document.getElementById("statVisible").textContent = rowsInput.length;
+  document.getElementById("statTotal").textContent = state.filtered.length;
+
+  const render = arr => arr.length
+    ? arr.map(([k,v])=>`<div class="analysis-row"><span>${esc(k)}</span><strong>${v}</strong></div>`).join("")
+    : '<div class="empty">Aucune donnée.</div>';
+
+  document.getElementById("analysisCategories").innerHTML =
+    render(groupedValues(rowsInput.map(eventCategory)));
+
+  document.getElementById("analysisSectors").innerHTML =
+    render(groupedValues(rowsInput.flatMap(eventSectors)));
+
+  document.getElementById("analysisCountries").innerHTML =
+    render(groupedValues(rowsInput.map(e=>countryName(e.country_code))));
+}
+
+function showPopup(e){
+  new maplibregl.Popup({offset:18,maxWidth:"380px"})
+    .setLngLat([Number(e.longitude),Number(e.latitude)])
+    .setHTML(popupHtmlForEvent(e))
+    .addTo(map);
+}
+
+
+function clearMarkers(){
+  state.markers.forEach(m => m.remove());
+  state.markers = [];
+}
+
+function renderMarkers(){
+  clearMarkers();
+
+  const groups = new Map();
+  state.filtered.forEach(e => {
+    const lng = Number(e.longitude);
+    const lat = Number(e.latitude);
+    if(!Number.isFinite(lng) || !Number.isFinite(lat)) return;
+    const key = `${lng.toFixed(5)}|${lat.toFixed(5)}`;
+    if(!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(e);
+  });
+
+  for(const events of groups.values()){
+    const first = events[0];
+    const el = document.createElement("button");
+    el.type = "button";
+    el.setAttribute("aria-label", events.length > 1 ? `${events.length} événements` : eventTitle(first));
+    el.style.cssText = `
+      width:${events.length > 1 ? "34px" : "22px"};
+      height:${events.length > 1 ? "34px" : "22px"};
+      border-radius:999px;
+      border:3px solid #fff;
+      background:#111;
+      color:#fff;
+      font-weight:800;
+      font-size:${events.length > 1 ? "12px" : "0"};
+      display:grid;
+      place-items:center;
+      box-shadow:0 3px 12px rgba(0,0,0,.35);
+      cursor:pointer;
+      padding:0;
+    `;
+    if(events.length > 1) el.textContent = String(events.length);
+
+    const popupHtml = events.length === 1
+      ? popupHtmlForEvent(first)
+      : `
+        <div class="popup-title">${events.length} événements · ${esc(first.locality || first.region || "")}</div>
+        ${events.map(e => `
+          <div style="padding:8px 0;border-top:1px solid #333">
+            <div style="font-size:12px;font-weight:700">${esc(eventTitle(e))}</div>
+            <div class="popup-meta">${esc(formatDate(e.occurred_at))} · ${esc(e.level || "")}</div>
+          </div>
+        `).join("")}
+      `;
+
+    const popup = new maplibregl.Popup({offset:18,maxWidth:"380px"}).setHTML(popupHtml);
+
+    const marker = new maplibregl.Marker({element:el,anchor:"center"})
+      .setLngLat([Number(first.longitude), Number(first.latitude)])
+      .setPopup(popup)
+      .addTo(map);
+
+    state.markers.push(marker);
+  }
+}
+
+function popupHtmlForEvent(e){
+  const tags = e.keywords || [];
+  const sectors = eventSectors(e);
+  const source = e.source_url
+    ? `<a class="popup-link" href="${esc(e.source_url)}" target="_blank" rel="noopener">OUVRIR LA SOURCE</a>`
+    : "";
+
+  return `
+    <div class="popup-title">${esc(eventTitle(e))}</div>
+    <div class="popup-meta">
+      ${esc(formatDate(e.occurred_at))}<br>
+      ${esc(e.locality || "")}${e.region ? " · "+esc(e.region) : ""} · ${esc(countryName(e.country_code))}<br>
+      ${esc(e.level || "")} · confiance ${esc((e.confidence || "").toLowerCase())} · ${esc(e.status || "")}<br>
+      Localisation : ${esc(e.geolocation_precision || "non renseignée")}
+    </div>
+    ${e.threat_type ? `<div class="popup-summary"><strong>Menace :</strong> ${esc(e.threat_type)}</div>` : ""}
+    ${e.target_type ? `<div class="popup-summary"><strong>Cible :</strong> ${esc(e.target_type)}</div>` : ""}
+    ${e.modus_operandi_summary ? `<div class="popup-summary" style="margin-top:7px"><strong>Mode opératoire :</strong> ${esc(e.modus_operandi_summary)}</div>` : ""}
+    ${e.notable_element ? `<div class="popup-summary" style="margin-top:7px"><strong>Élément notable :</strong> ${esc(e.notable_element)}</div>` : ""}
+    ${e.nekhen_relevance ? `<div class="popup-summary" style="margin-top:7px"><strong>Pertinence Nekhen :</strong> ${esc(e.nekhen_relevance)}</div>` : ""}
+    ${(sectors.length || tags.length) ? `
+      <div class="popup-tags">
+        ${sectors.map(t=>`<span class="popup-tag">${esc(t)}</span>`).join("")}
+        ${tags.slice(0,8).map(t=>`<span class="popup-tag">${esc(t)}</span>`).join("")}
+      </div>` : ""}
+    ${e.source_publisher || e.source_title ? `
+      <div class="popup-meta" style="margin-top:9px">
+        Source : ${esc(e.source_publisher || e.source_title || "")}
+      </div>` : ""}
+    ${source}
+  `;
+}
+
+function goToCountry(code){
+  const c = COUNTRIES.find(x=>x.code===code);
+  if(!c) return;
+
+  const rows = state.events.filter(e => e.country_code === code);
+  if(rows.length){
+    let west=Infinity,east=-Infinity,south=Infinity,north=-Infinity;
+    rows.forEach(e=>{
+      const lng=Number(e.longitude), lat=Number(e.latitude);
+      if(!Number.isFinite(lng)||!Number.isFinite(lat)) return;
+      west=Math.min(west,lng); east=Math.max(east,lng);
+      south=Math.min(south,lat); north=Math.max(north,lat);
+    });
+
+    if(Number.isFinite(west)){
+      if(west===east && south===north){
+        map.easeTo({
+          center:[west,south],
+          zoom:9,
+          offset:[180,0],
+          duration:500
+        });
+      }else{
+        map.fitBounds([[west,south],[east,north]],{
+          padding:{top:70,right:70,bottom:70,left:430},
+          maxZoom:9,
+          duration:500
+        });
+      }
+      return;
+    }
+  }
+
+  map.easeTo({center:c.center,zoom:c.zoom,duration:500});
+}
+
+map.on("load", async () => {
+  // Markers are rendered as lightweight DOM markers; no GeoJSON layer required.
+
+  fillCountries();
+
+  try{
+    await loadEvents();
+  }catch(err){
+    console.error(err);
+    document.getElementById("dataStatus").innerHTML =
+      'Données : <strong>erreur Supabase</strong>';
+    document.getElementById("feed").innerHTML =
+      '<div class="empty">Connexion à la base impossible.</div>';
+    return;
+  }
+
+  fillSimpleSelect("category", uniqueCategories());
+  fillSimpleSelect("sector", uniqueSectors());
+
+  filterEvents();
+  goToCountry("CH");
+});
+
+map.on("idle",updateVisible);
+
+document.querySelectorAll(".tab").forEach(tab=>tab.addEventListener("click",()=>{
+  document.querySelectorAll(".tab").forEach(t=>t.classList.remove("active"));
+  document.querySelectorAll(".view").forEach(v=>v.classList.remove("active"));
+  tab.classList.add("active");
+  document.getElementById(`view-${tab.dataset.view}`).classList.add("active");
+}));
+
+document.getElementById("countryMain").addEventListener("change",e=>{
+  state.country = e.target.value;
+  filterEvents();
+  goToCountry(state.country);
+});
+
+document.getElementById("applyFilters").addEventListener("click",()=>{
+  state.period = document.getElementById("period").value;
+  state.category = document.getElementById("category").value;
+  state.sector = document.getElementById("sector").value;
+  state.precision = document.getElementById("precision").value;
+  state.tag = document.getElementById("tagFilter").value.trim();
+  filterEvents();
+});
+
+document.getElementById("resetFilters").addEventListener("click",()=>{
+  state.period="all"; state.category=""; state.sector=""; state.precision=""; state.tag="";
+  document.getElementById("period").value="all";
+  document.getElementById("category").value="";
+  document.getElementById("sector").value="";
+  document.getElementById("precision").value="";
+  document.getElementById("tagFilter").value="";
+  document.getElementById("feedSearch").value="";
+  filterEvents();
+});
+
+document.getElementById("feedSearch").addEventListener("input",()=>renderFeed(state.visible.length ? state.visible : state.filtered));
+
+document.getElementById("closePanel").addEventListener("click",()=>{
+  document.getElementById("sidebar").classList.add("closed");
+  setTimeout(()=>map.resize(),200);
+});
+document.getElementById("openPanel").addEventListener("click",()=>{
+  document.getElementById("sidebar").classList.remove("closed");
+  setTimeout(()=>map.resize(),200);
+});
+</script>
+</body>
+</html>
