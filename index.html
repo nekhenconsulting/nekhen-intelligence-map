@@ -320,6 +320,14 @@ function eventCategory(e){
 function eventSectors(e){
   return normalizeArray(e.sectors);
 }
+function eventTime(e){
+  const value = e.occurred_at || e.detected_at || "";
+  const t = Date.parse(value);
+  return Number.isFinite(t) ? t : 0;
+}
+function sortChronologicalDesc(list){
+  return [...list].sort((a,b) => eventTime(b) - eventTime(a));
+}
 function toGeoJSON(list){
   return {
     type:"FeatureCollection",
@@ -373,13 +381,15 @@ async function loadEvents(){
   }
 
   const rows = await res.json();
-  state.events = rows.map(r => ({
-    ...r,
-    latitude: Number(r.latitude),
-    longitude: Number(r.longitude),
-    keywords: normalizeArray(r.keywords),
-    sectors: normalizeArray(r.sectors)
-  })).filter(e => COUNTRIES.some(c=>c.code===e.country_code));
+  state.events = sortChronologicalDesc(
+    rows.map(r => ({
+      ...r,
+      latitude: Number(r.latitude),
+      longitude: Number(r.longitude),
+      keywords: normalizeArray(r.keywords),
+      sectors: normalizeArray(r.sectors)
+    })).filter(e => COUNTRIES.some(c=>c.code===e.country_code))
+  );
 
   document.getElementById("dataStatus").innerHTML =
     `Données : <strong>Supabase · ${state.events.length}</strong>`;
@@ -388,7 +398,7 @@ async function loadEvents(){
 function filterEvents(){
   const now = new Date();
 
-  state.filtered = state.events.filter(e => {
+  state.filtered = sortChronologicalDesc(state.events.filter(e => {
     if(e.country_code !== state.country) return false;
 
     const category = eventCategory(e);
@@ -420,7 +430,7 @@ function filterEvents(){
       if((now - d) / 86400000 > Number(state.period)) return false;
     }
     return true;
-  });
+  }));
 
   renderMarkers();
   updateVisible();
@@ -430,13 +440,13 @@ function updateVisible(){
   if(!map.loaded()) return;
   const b = map.getBounds();
 
-  state.visible = state.filtered.filter(e => {
+  state.visible = sortChronologicalDesc(state.filtered.filter(e => {
     const lng = Number(e.longitude);
     const lat = Number(e.latitude);
     return Number.isFinite(lng) && Number.isFinite(lat) &&
       lng >= b.getWest() && lng <= b.getEast() &&
       lat >= b.getSouth() && lat <= b.getNorth();
-  });
+  }));
 
   // If the selected country's events are temporarily outside the rendered bounds
   // during a camera transition, keep the feed populated instead of flashing empty.
@@ -450,7 +460,7 @@ function updateVisible(){
 
 function renderFeed(rowsInput = state.filtered){
   const q = document.getElementById("feedSearch").value.trim().toLowerCase();
-  const rows = rowsInput
+  const rows = sortChronologicalDesc(rowsInput
     .filter(e => {
       if(!q) return true;
       const haystack = [
@@ -459,8 +469,7 @@ function renderFeed(rowsInput = state.filtered){
         e.notable_element, e.nekhen_relevance, ...(e.keywords||[])
       ].join(" ").toLowerCase();
       return haystack.includes(q);
-    })
-    .sort((a,b)=>String(b.occurred_at||"").localeCompare(String(a.occurred_at||"")));
+    }));
 
   const feed = document.getElementById("feed");
   feed.innerHTML = rows.length ? rows.map(e => `
@@ -536,7 +545,8 @@ function renderMarkers(){
     groups.get(key).push(e);
   });
 
-  for(const events of groups.values()){
+  for(const rawEvents of groups.values()){
+    const events = sortChronologicalDesc(rawEvents);
     const first = events[0];
     const el = document.createElement("button");
     el.type = "button";
